@@ -4,6 +4,7 @@ import com.alibaba.csp.sentinel.dashboard.datasource.entity.rule.*;
 import com.alibaba.csp.sentinel.dashboard.repository.rule.RuleRepository;
 import com.alibaba.csp.sentinel.dashboard.util.YamlPropertyLoader;
 import com.alibaba.csp.sentinel.util.function.Function;
+import com.alibaba.fastjson.JSON;
 import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.config.ConfigFactory;
 import com.alibaba.nacos.api.config.ConfigService;
@@ -12,6 +13,7 @@ import com.alibaba.nacos.api.exception.NacosException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
 import lombok.Getter;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,11 +118,11 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
         String paramDataId = paramRule.apply(appName);
         String authorityDataId = authorityRule.apply(appName);
         try {
-            configService.addListener(flowDataId,nacosProperties.getGroup(), new RulePropertyListener(FLOW));
-            configService.addListener(systemDataId,nacosProperties.getGroup(), new RulePropertyListener(SYSTEM));
-            configService.addListener(degradeDataId,nacosProperties.getGroup(), new RulePropertyListener(DEGRADE));
-            configService.addListener(paramDataId,nacosProperties.getGroup(), new RulePropertyListener(PARAM));
-            configService.addListener(authorityDataId,nacosProperties.getGroup(), new RulePropertyListener(AUTHORITY));
+            configService.addListener(flowDataId,nacosProperties.getGroup(), new RulePropertyListener(FLOW,flowDataId));
+            configService.addListener(systemDataId,nacosProperties.getGroup(), new RulePropertyListener(SYSTEM,systemDataId));
+            configService.addListener(degradeDataId,nacosProperties.getGroup(), new RulePropertyListener(DEGRADE,degradeDataId));
+            configService.addListener(paramDataId,nacosProperties.getGroup(), new RulePropertyListener(PARAM,paramDataId));
+            configService.addListener(authorityDataId,nacosProperties.getGroup(), new RulePropertyListener(AUTHORITY,authorityDataId));
         } catch (NacosException e) {
             log.error("create rule listener error", e);
         }
@@ -144,8 +146,12 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
         private final String appType;
 
 
-        RulePropertyListener(String appType) {
+        private final String appName;
+
+
+        RulePropertyListener(String appType, String appName) {
             this.appType = appType;
+            this.appName = appName;
         }
 
 
@@ -157,16 +163,32 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
         @Override
         public void receiveConfigInfo(String configInfo) {
 
+            if (StringUtils.isBlank(configInfo)){
+                return;
+            }
             Class<?> aClass = ruleTypeCache.get(appType);
             if (aClass == null) {
                 return;
             }
+
             try {
                 CollectionType collectionType = objectMapper.getTypeFactory().constructCollectionType(List.class, aClass);
                 Object o = objectMapper.readValue(configInfo, collectionType);
                 ObjectProvider<RuleRepository<Object, Long>> ruleRepository = getRuleRepository(appType);
                 if (ruleRepository != null) {
-                    ruleRepository.ifAvailable(r -> r.save(o));
+                    ruleRepository.ifAvailable(r -> {
+                        List<Object> rules = r.findAllByApp(appName);
+                        if (CollectionUtils.isEmpty(rules)) {
+                            r.save(o);
+                            return;
+                        }
+                        String local = JSON.toJSONString(rules);
+                        String s = DigestUtils.md5Hex(local);
+                        String s1 = DigestUtils.md5Hex(configInfo);
+                        if (!s.equals(s1)){
+                            r.save(o);
+                        }
+                    });
                 }
             } catch (Exception e) {
                 log.error("refresh rule error", e);
