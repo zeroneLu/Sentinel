@@ -163,9 +163,6 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
         @Override
         public void receiveConfigInfo(String configInfo) {
 
-            if (StringUtils.isBlank(configInfo)){
-                return;
-            }
             Class<?> aClass = ruleTypeCache.get(appType);
             if (aClass == null) {
                 return;
@@ -173,20 +170,24 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
 
             try {
                 CollectionType collectionType = objectMapper.getTypeFactory().constructCollectionType(List.class, aClass);
-                Object o = objectMapper.readValue(configInfo, collectionType);
+                List<Object> o = objectMapper.readValue(configInfo, collectionType);
                 ObjectProvider<RuleRepository<Object, Long>> ruleRepository = getRuleRepository(appType);
                 if (ruleRepository != null) {
                     ruleRepository.ifAvailable(r -> {
+                        if (StringUtils.isBlank(configInfo)){
+                            r.saveAll(null);
+                            return;
+                        }
                         List<Object> rules = r.findAllByApp(appName);
                         if (CollectionUtils.isEmpty(rules)) {
-                            r.save(o);
+                            r.saveAll(o);
                             return;
                         }
                         String local = JSON.toJSONString(rules);
                         String s = DigestUtils.md5Hex(local);
                         String s1 = DigestUtils.md5Hex(configInfo);
-                        if (!s.equals(s1)){
-                            r.save(o);
+                        if (!s.equals(s1)) {
+                            r.saveAll(o);
                         }
                     });
                 }
