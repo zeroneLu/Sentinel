@@ -25,6 +25,7 @@ import org.springframework.boot.context.properties.PropertyMapper;
 import org.springframework.core.ResolvableType;
 import org.springframework.util.CollectionUtils;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +50,16 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
 
     private static final String AUTHORITY = "authority";
 
+    private static final Map<String, Class<?>> ruleTypeCache = new HashMap<>();
+
+    static {
+        ruleTypeCache.put(FLOW, FlowRuleEntity.class);
+        ruleTypeCache.put(SYSTEM, SystemRuleEntity.class);
+        ruleTypeCache.put(DEGRADE, DegradeRuleEntity.class);
+        ruleTypeCache.put(PARAM, ParamFlowRuleEntity.class);
+        ruleTypeCache.put(AUTHORITY, AuthorityRuleEntity.class);
+    }
+
 
     private final Function<String, String> flowRule = x -> x + NacosConfigUtil.FLOW_DATA_ID_POSTFIX;
 
@@ -59,14 +70,6 @@ public class NacosConfigClientProvider implements InitializingBean, DisposableBe
     private final Function<String, String> paramRule = x -> x + NacosConfigUtil.PARAM_FLOW_DATA_ID_POSTFIX;
 
     private final Function<String, String> authorityRule = x -> x + NacosConfigUtil.AUTHORITY_DATA_ID_POSTFIX;
-
-    private final Map<String, Class<?>> ruleTypeCache = Map.of(
-            FLOW, FlowRuleEntity.class,
-            SYSTEM, SystemRuleEntity.class,
-            DEGRADE, DegradeRuleEntity.class,
-            PARAM, ParamFlowRuleEntity.class,
-            AUTHORITY, AuthorityRuleEntity.class
-    );
 
 
     @Getter
